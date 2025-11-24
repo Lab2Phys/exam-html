@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ارسال پاسخ امتحان</title>
+    <style>
+        body {font-family: Tahoma, sans-serif; background: #f0f2f5; padding: 20px; text-align: center;}
+        .box {max-width: 600px; margin: 40px auto; background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);}
+        h1 {color: #1a73e8;}
+        input, button {padding: 12px; margin: 10px; font-size: 16px; width: 90%; border-radius: 8px; border: 1px solid #ddd;}
+        button {background: #1a73e8; color: white; cursor: pointer; border: none;}
+        button:hover {background: #0d47a1;}
+        .success {color: green; font-weight: bold; margin-top: 20px;}
+        .error {color: red;}
+        #fileList {margin: 10px 0; text-align: right; font-size: 14px;}
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>ارسال پاسخ امتحان</h1>
+        <p>شماره دانشجویی خود را وارد کنید و فایل‌های پاسخ را انتخاب کنید.</p>
+
+        <input type="text" id="studentId" placeholder="شماره دانشجویی (مثلاً ۹۸۱۲۳۴۵۶۷۸)" required>
+
+        <label>فایل‌های پاسخ را انتخاب کنید (Browse):</label>
+        <input type="file" id="files" multiple accept=".py,.cpp,.java,.txt,.pdf,.zip">
+        <div id="fileList"></div>
+
+        <button onclick="uploadFiles()">ارسال به استاد</button>
+        <div id="message"></div>
+    </div>
+
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script>
+        const CLIENT_ID = 'YOUR_CLIENT_ID.apps.googleusercontent.com';  // از Google Cloud بگیرید
+        const API_KEY = 'YOUR_API_KEY';                                 // از Google Cloud بگیرید
+        const FOLDER_ID = '1EL7BXYMtlVpbCh-MdUNw4N2CpxxW-pLC';        // پوشه شما!
+
+        const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+
+        // نمایش لیست فایل‌های انتخابی
+        document.getElementById('files').addEventListener('change', function(e) {
+            const fileList = document.getElementById('fileList');
+            if (e.target.files.length > 0) {
+                fileList.innerHTML = '<p>فایل‌های انتخابی:</p><ul>' + 
+                    Array.from(e.target.files).map(f => `<li>${f.name} (${(f.size/1024).toFixed(1)} KB)</li>`).join('') + 
+                    '</ul>';
+            } else {
+                fileList.innerHTML = '';
+            }
+        });
+
+        function uploadFiles() {
+            const studentId = document.getElementById('studentId').value.trim();
+            const files = document.getElementById('files').files;
+            const message = document.getElementById('message');
+
+            if (!studentId) return message.innerHTML = '<p class="error">شماره دانشجویی را وارد کنید!</p>';
+            if (files.length === 0) return message.innerHTML = '<p class="error">حداقل یک فایل انتخاب کنید!</p>';
+
+            message.innerHTML = '<p>در حال اتصال به Google Drive...</p>';
+
+            gapi.load('auth2', function() {
+                gapi.auth2.authorize({
+                    client_id: CLIENT_ID,
+                    scope: SCOPES,
+                    immediate: false
+                }, function(authResult) {
+                    if (authResult && !authResult.error) {
+                        message.innerHTML = '<p>در حال آپلود...</p>';
+                        uploadAllFiles(authResult.access_token, studentId, files, message);
+                    } else {
+                        message.innerHTML = '<p class="error">لطفاً اجازه دسترسی به Google Drive را بدهید.</p>';
+                    }
+                });
+            });
+        }
+
+        async function uploadAllFiles(token, studentId, files, message) {
+            let uploaded = 0;
+            for (let file of files) {
+                try {
+                    const metadata = {
+                        name: `${studentId}_${file.name}`,
+                        parents: [FOLDER_ID]
+                    };
+                    const form = new FormData();
+                    form.append('metadata', new Blob([JSON.stringify(metadata)], {type: 'application/json'}));
+                    form.append('file', file);
+
+                    const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+                        method: 'POST',
+                        headers: { 'Authorization': 'Bearer ' + token },
+                        body: form
+                    });
+
+                    if (response.ok) uploaded++;
+                } catch (error) {
+                    console.error('Upload error:', error);
+                }
+            }
+            message.innerHTML = `<p class="success">✅ ${uploaded} فایل آپلود شد!<br>شماره: ${studentId}<br>فایل‌ها در پوشه استاد ذخیره شد.</p>`;
+        }
+    </script>
+</body>
+</html>
